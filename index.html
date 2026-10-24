@@ -13,24 +13,26 @@
 <title>Copperwing</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Nunito:wght@700;800&display=swap">
 <style>
-/* Layout: one full-height stage; canvas scaled to fit with a tuning drawer that overlays it. Single dusk look by choice. */
+/* Layout: full-bleed stage; the canvas covers the whole screen and the play area is fitted inside it, with the scenery extended to the edges. Single dusk look by choice. */
 :root{
   --night:#1b1530; --panel:#120d22; --line:#3a2a52; --brass:#e0a64a; --ember:#ff8a4c; --cream:#fff3dd; --muted:#a898c4;
   --display:"Bungee","Impact","Arial Black",sans-serif; --body:"Nunito","Trebuchet MS",system-ui,sans-serif;
   color-scheme:dark;
 }
 html,body{height:100%}
-body{background:var(--night);color:var(--cream);font-family:var(--body);display:flex;align-items:center;justify-content:center;
-  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:8px;box-sizing:border-box;overflow:hidden;
+body{background:var(--night);color:var(--cream);font-family:var(--body);overflow:hidden;
   user-select:none;-webkit-user-select:none;touch-action:manipulation}
-.stage{position:relative;max-width:100%}
-canvas{display:block;border-radius:12px;box-shadow:0 20px 60px #0008;outline:none;max-width:100%}
-canvas:focus-visible{box-shadow:0 0 0 3px var(--brass),0 20px 60px #0008}
-.icon-btn{position:absolute;top:10px;width:36px;height:36px;border-radius:50%;border:2px solid var(--brass);background:#120d22cc;color:var(--cream);
+.stage{position:fixed;inset:0}
+#game{position:absolute;inset:0;width:100%;height:100%;display:block;outline:none}
+#game:focus,#game:focus-visible{outline:none}
+#safeProbe{position:fixed;inset:0;visibility:hidden;pointer-events:none;
+  padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+.icon-btn{position:absolute;top:calc(10px + env(safe-area-inset-top,0px));width:36px;height:36px;border-radius:50%;border:2px solid var(--brass);background:#120d22cc;color:var(--cream);
   font:800 15px/1 var(--body);cursor:pointer;display:grid;place-items:center;padding:0}
 .icon-btn:focus-visible{outline:3px solid var(--ember);outline-offset:2px}
-#tuneBtn{right:10px}#muteBtn{right:54px}
-.drawer{position:absolute;inset:0;background:#120d22f2;border-radius:12px;padding:18px 18px 16px;box-sizing:border-box;overflow:auto;
+#tuneBtn{right:calc(10px + env(safe-area-inset-right,0px))}#muteBtn{right:calc(54px + env(safe-area-inset-right,0px))}
+.drawer{position:absolute;inset:0;margin:auto;max-width:440px;background:#120d22f2;border-radius:12px;
+  padding:max(18px,env(safe-area-inset-top,0px)) max(18px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(18px,env(safe-area-inset-left,0px));box-sizing:border-box;overflow:auto;
   display:flex;flex-direction:column;gap:12px}
 .drawer h2{margin:0;font:22px/1 var(--display);color:var(--ember);letter-spacing:.02em}
 .drawer p{margin:0;color:var(--muted);font-size:13px;line-height:1.4}
@@ -76,6 +78,7 @@ canvas:focus-visible{box-shadow:0 0 0 3px var(--brass),0 20px 60px #0008}
 </head>
 <body>
 <div class="stage" id="stage">
+  <div id="safeProbe"></div>
   <canvas id="game" tabindex="0" aria-label="Copperwing game. Tap, click or press space to flap."></canvas>
   <button class="icon-btn" id="muteBtn" aria-label="Sound on" title="Sound">♪</button>
   <button class="icon-btn" id="tuneBtn" aria-label="Open settings" title="Settings">⚙</button>
@@ -133,9 +136,19 @@ const RELEASE=window.CW_RELEASE===true; // release build: no settings panel, cla
 if(!RELEASE)try{Object.assign(P,JSON.parse(localStorage.getItem('cw-tune')||'{}'))}catch(e){}
 
 const cv=document.getElementById('game'),ctx=cv.getContext('2d');
-cv.width=W*RES;cv.height=H*RES;
-function fit(){const s=Math.min((innerWidth-32)/W,(innerHeight-16)/H);cv.style.width=W*s+'px';cv.style.height=H*s+'px';}
-addEventListener('resize',fit);fit();
+// The canvas fills the screen. The 288 x 512 play area is scaled to fit inside the safe area (so gameplay is identical
+// on every device) and the sky, ground, background and pipes are drawn out to every edge.
+const VIEW={l:0,r:W,t:0,b:H};let BASE=[RES,0,0,RES,0,0];
+function fit(){
+  const dpr=Math.min(window.devicePixelRatio||1,3),vw=innerWidth,vh=innerHeight;
+  cv.width=Math.round(vw*dpr);cv.height=Math.round(vh*dpr);
+  const ps=getComputedStyle(document.getElementById('safeProbe'));
+  const st=parseFloat(ps.paddingTop)||0,sr=parseFloat(ps.paddingRight)||0,sb=parseFloat(ps.paddingBottom)||0,sl=parseFloat(ps.paddingLeft)||0;
+  const aw=Math.max(1,vw-sl-sr),ah=Math.max(1,vh-st-sb),s=Math.min(aw/W,ah/H);
+  const ox=sl+(aw-W*s)/2,oy=st+(ah-H*s)/2;
+  VIEW.l=-ox/s;VIEW.r=(vw-ox)/s;VIEW.t=-oy/s;VIEW.b=(vh-oy)/s;
+  BASE=[dpr*s,0,0,dpr*s,dpr*ox,dpr*oy];}
+addEventListener('resize',fit);addEventListener('orientationchange',()=>setTimeout(fit,200));fit();
 
 let best=0;try{best=+localStorage.getItem('cw-best')||0}catch(e){}
 
@@ -160,7 +173,7 @@ const sfx={
   swoosh:()=>noise(.25,.25,500,3000),
 };
 const muteBtn=document.getElementById('muteBtn');
-if(RELEASE){document.getElementById('tuneBtn').remove();muteBtn.style.right='10px';}
+if(RELEASE){document.getElementById('tuneBtn').remove();muteBtn.style.right='calc(10px + env(safe-area-inset-right,0px))';}
 function paintMute(){muteBtn.textContent=muted?'×':'♪';muteBtn.setAttribute('aria-label',muted?'Sound off':'Sound on');}
 paintMute();
 muteBtn.addEventListener('click',e=>{e.stopPropagation();muted=!muted;try{localStorage.setItem('cw-mute',muted?'1':'0')}catch(err){}paintMute();cv.focus();});
@@ -208,7 +221,7 @@ const srcs={bird:null,pipe:null}; // the uploaded image before fitting, so it ca
 function drawSkinBird(c){const im=skin.bird;c.imageSmoothingEnabled=false;c.drawImage(im,-P.birdW/2,-P.birdH/2,P.birdW,P.birdH);c.imageSmoothingEnabled=true;}
 function drawSkinPipe(x,edgeY,dir){ // dir 1: lower pipe grows down from edgeY; -1: upper pipe grows up
   const im=skin.pipe,s=P.pipeW/im.width,ih=im.height*s;
-  const need=dir>0?GROUND-edgeY:edgeY+4;if(need<=0)return;
+  const need=dir>0?GROUND-edgeY:edgeY-VIEW.t+4;if(need<=0)return;
   ctx.save();ctx.imageSmoothingEnabled=false;
   if(dir<0){ctx.translate(0,edgeY);ctx.scale(1,-1);ctx.translate(0,-edgeY);}
   const capH=Math.min(ih,need);
@@ -216,7 +229,25 @@ function drawSkinPipe(x,edgeY,dir){ // dir 1: lower pipe grows down from edgeY; 
   if(need>ih){const strip=Math.max(1,Math.floor(im.height*.1));
     ctx.drawImage(im,0,im.height-strip,im.width,strip,x,edgeY+ih-1,P.pipeW,need-ih+1);}
   ctx.restore();}
-function drawSkinBg(){ctx.imageSmoothingEnabled=false;ctx.drawImage(skin.bg,0,0,W,H);ctx.imageSmoothingEnabled=true;}
+const BG_SPEED=0.5; // background rolls at half the pipe speed, for depth
+const bgSeam={img:null,mirror:false};
+function checkSeam(im){ // if the left and right edges don't match, alternate mirrored copies so the loop has no visible seam
+  bgSeam.img=im;bgSeam.mirror=false;
+  try{const w=Math.min(im.width,400),h=Math.min(im.height,400),c=document.createElement('canvas');c.width=w;c.height=h;
+    const g=c.getContext('2d');g.drawImage(im,0,0,w,h);const L=g.getImageData(0,0,1,h).data,R=g.getImageData(w-1,0,1,h).data;
+    let diff=0;for(let i=0;i<L.length;i+=4)diff+=Math.abs(L[i]-R[i])+Math.abs(L[i+1]-R[i+1])+Math.abs(L[i+2]-R[i+2]);
+    bgSeam.mirror=diff/(h*3)>18;}catch(e){}}
+function drawSkinBg(sc){
+  const im=skin.bg;if(bgSeam.img!==im)checkSeam(im);
+  const period=bgSeam.mirror?2*W:W,o=-(((sc*BG_SPEED)%period)+period)%period;
+  ctx.imageSmoothingEnabled=false;
+  for(let k=Math.floor((VIEW.l-o)/W);o+k*W<VIEW.r;k++){
+    const x=o+k*W,flip=bgSeam.mirror&&(((k%2)+2)%2===1);
+    ctx.save();if(flip){ctx.translate(x+W,0);ctx.scale(-1,1);}else ctx.translate(x,0);
+    ctx.drawImage(im,0,0,W+.6,H);
+    if(VIEW.t<0){const slice=Math.max(1,Math.floor(im.height*.02));ctx.drawImage(im,0,0,im.width,slice,0,VIEW.t,W+.6,-VIEW.t+.5);} // extend the sky up
+    ctx.restore();}
+  ctx.imageSmoothingEnabled=true;}
 
 function processImage(img,max,keyBg){ // downscale, optionally key out the corner color, then trim empty edges
   const s=Math.min(1,max/Math.max(img.width,img.height));
@@ -409,7 +440,7 @@ const SOUNDS=[
   {k:'point',label:'Point',hint:'Clearing a pipe'},
   {k:'hit',label:'Hit',hint:'Crashing'},
   {k:'fall',label:'Fall',hint:'Dropping after a pipe hit'},
-  {k:'swoosh',label:'Restart',hint:'Starting a new run'},
+  {k:'swoosh',label:'Swoosh',hint:'Score board sliding in, and new runs'},
 ];
 const customSnd={},sndNames={};
 function decodeSound(buf){return new Promise((ok,no)=>{const a=getAC();if(!a)return no();
@@ -467,8 +498,9 @@ function reset(){
 reset();mode='title'; // first launch opens on the title screen
 
 function randomGapTop(){return Math.floor(Math.random()*Math.max(1,GROUND*0.6-P.pipeGap))+Math.floor(GROUND*0.2);}
-function startRun(){mode='play';pipes=[{x:W+200,gap:randomGapTop(),passed:false}];}
-function canRestart(){return mode==='over'&&landedAt&&ticks-landedAt>15;}
+function startRun(){mode='play';pipes=[{x:W+200,gap:randomGapTop(),passed:false,born:ticks}];}
+const BOARD_DELAY=8,BOARD_TICKS=12; // after the bird lands: heading drops in, then the board slides up from the bottom
+function canRestart(){return mode==='over'&&landedAt&&ticks-landedAt>BOARD_DELAY+BOARD_TICKS+2;}
 function input(){
   if(paused)return;
   audio();
@@ -514,9 +546,9 @@ function step(){
       p.x-=P.pipeSpeed;
       if(!p.passed&&p.x+P.pipeW/2<=P.birdX+P.birdW/2){p.passed=true;score++;sfx.point();}
     }
-    if(pipes.length&&pipes[0].x<-P.pipeW)pipes.shift();
+    if(pipes.length&&pipes[0].x<Math.min(0,VIEW.l)-P.pipeW)pipes.shift();
     const last=pipes[pipes.length-1];
-    if(!last||last.x<W+60)pipes.push({x:(last?last.x:W+60)+P.pipeSpacing,gap:randomGapTop(),passed:false});
+    if(!last||last.x<Math.max(W,VIEW.r)+60)pipes.push({x:(last?last.x:W+60)+P.pipeSpacing,gap:randomGapTop(),passed:false,born:ticks});
 
     const h=hit();
     if(h){mode='over';deadAt=ticks;flash=3;bird.crash=h;sfx.hit();
@@ -524,6 +556,7 @@ function step(){
       if(score>best){best=score;newBest=true;try{localStorage.setItem('cw-best',best)}catch(e){}}}
   }else if(mode==='over'){
     if(flash>0)flash--;
+    if(landedAt&&ticks===landedAt+BOARD_DELAY)sfx.swoosh();
     if(bird.y<GROUND-P.birdH){
       if(bird.vel<15)bird.vel+=2;
       bird.y=Math.min(bird.y+bird.vel,GROUND-P.birdH);
@@ -534,11 +567,14 @@ function step(){
 
 /* ---------- Drawing ---------- */
 function sky(){const g=ctx.createLinearGradient(0,0,0,GROUND);g.addColorStop(0,'#1b1530');g.addColorStop(.5,'#5a2f6b');g.addColorStop(.85,'#ff8a4c');g.addColorStop(1,'#ffc27a');
-  ctx.fillStyle=g;ctx.fillRect(0,0,W,GROUND);
-  ctx.fillStyle='#fff3dd';for(const[x,y,s]of stars){ctx.globalAlpha=.3+.3*Math.sin(ticks/10+x);ctx.fillRect(x,y,s,s);}ctx.globalAlpha=1;
+  ctx.fillStyle=g;ctx.fillRect(VIEW.l,VIEW.t,VIEW.r-VIEW.l,GROUND-VIEW.t);
+  ctx.fillStyle='#fff3dd';
+  for(let tx=Math.floor(VIEW.l/W)*W;tx<VIEW.r;tx+=W)for(let ty=0;ty>VIEW.t-W;ty-=220)for(const[x,y,s]of stars){
+    if(ty<0&&y>220)continue;ctx.globalAlpha=.3+.3*Math.sin(ticks/10+x+tx);ctx.fillRect(tx+x,ty+y,s,s);}
+  ctx.globalAlpha=1;
   ctx.fillStyle='#ffd8a0';ctx.beginPath();ctx.arc(210,300,34,0,7);ctx.fill();}
 function layer(sk,sc,speed,col,winCol){const off=-(sc*speed)%sk.width;
-  for(const rep of[0,sk.width])for(const b of sk.b){const x=b.x+off+rep;if(x>W||x+b.w<0)continue;
+  for(let rep=Math.floor((VIEW.l-off)/sk.width)*sk.width;off+rep<VIEW.r;rep+=sk.width)for(const b of sk.b){const x=b.x+off+rep;if(x>VIEW.r||x+b.w<VIEW.l)continue;
     ctx.fillStyle=col;ctx.fillRect(x,GROUND-b.h,b.w,b.h);
     if(b.ant){ctx.fillRect(x+b.w/2-1,GROUND-b.h-12,1.5,12);ctx.fillStyle='#ff5a5a';if(ticks%20<10)ctx.fillRect(x+b.w/2-1.5,GROUND-b.h-14,3,3);}
     ctx.fillStyle=winCol;for(const[wx,wy]of b.win)ctx.fillRect(wx+off+rep,wy,3,4);}}
@@ -559,9 +595,9 @@ function drawBird(y){
   const bx=mode==='title'?W/2:P.birdX+P.birdW/2;
   ctx.save();ctx.translate(bx,y+P.birdH/2);ctx.rotate(-vis*Math.PI/180);
   if(skin.bird){const wob=mode==='over'?0:wf*.15;ctx.translate(0,wob);drawSkinBird(ctx);}else birdShape(ctx,wf,true);ctx.restore();}
-function ground(sc){ctx.fillStyle='#2a1d3d';ctx.fillRect(0,GROUND,W,H-GROUND);
-  ctx.fillStyle='#e0a64a';ctx.fillRect(0,GROUND,W,3);
-  ctx.fillStyle='#3a2a52';const o=-(sc%28);for(let x=o;x<W;x+=28)ctx.fillRect(x,GROUND+10,16,3);}
+function ground(sc){const gw=VIEW.r-VIEW.l;ctx.fillStyle='#2a1d3d';ctx.fillRect(VIEW.l,GROUND,gw,VIEW.b-GROUND);
+  ctx.fillStyle='#e0a64a';ctx.fillRect(VIEW.l,GROUND,gw,3);
+  ctx.fillStyle='#3a2a52';const o=-(sc%28);for(let x=o+Math.floor((VIEW.l-o)/28)*28;x<VIEW.r;x+=28)ctx.fillRect(x,GROUND+10,16,3);}
 function text(s,x,y,size,col,align='center',face='display'){
   ctx.font=face==='display'?`${size}px Bungee, Impact, sans-serif`:`800 ${size}px Nunito, Trebuchet MS, sans-serif`;
   ctx.textAlign=align;ctx.lineJoin='round';ctx.lineWidth=size/5;ctx.strokeStyle='#120d22';ctx.strokeText(s,x,y);ctx.fillStyle=col;ctx.fillText(s,x,y);}
@@ -598,24 +634,28 @@ function titleScreen(){
 function draw(a){
   const live=mode!=='over'&&!paused;
   const sc=live?prevScroll+(scroll-prevScroll)*a:scroll, by=live||bird.y<GROUND-P.birdH?prevY+(bird.y-prevY)*a:bird.y;
-  ctx.setTransform(RES,0,0,RES,0,0);
-  if(skin.bg)drawSkinBg();else{sky();layer(far,sc,.15,'#3a2556','#ffd27a55');layer(near,sc,.35,'#24183a','#ffd27a99');}
+  ctx.setTransform(...BASE);
+  if(skin.bg)drawSkinBg(sc);else{sky();layer(far,sc,.15,'#3a2556','#ffd27a55');layer(near,sc,.35,'#24183a','#ffd27a99');}
   const shift=mode==='play'&&!paused?P.pipeSpeed*(1-a):0; // smooth pipes between ticks
   for(const p of pipes){const x=p.x+shift,top=p.gap,bot=p.gap+P.pipeGap;
-    if(skin.pipe){drawSkinPipe(x,top,-1);drawSkinPipe(x,bot,1);continue;}
-    pipeBody(x,-4,top-16);collar(x,top-16);if(mode!=='over')steam(x,top);
-    pipeBody(x,bot+16,GROUND);collar(x,bot);}
+    ctx.globalAlpha=Math.min(1,(ticks-(p.born||0)+1)/6); // fades in, only noticeable on very wide screens
+    if(skin.pipe){drawSkinPipe(x,top,-1);drawSkinPipe(x,bot,1);ctx.globalAlpha=1;continue;}
+    pipeBody(x,VIEW.t-4,top-16);collar(x,top-16);if(mode!=='over')steam(x,top);
+    pipeBody(x,bot+16,GROUND);collar(x,bot);ctx.globalAlpha=1;}
   ground(sc);drawBird(by);
   if(mode==='play')text(String(score),W/2,64,36,'#fff3dd');
   if(mode==='title')titleScreen();
   if(mode==='ready'){text('GET READY',W/2,120,28,'#ff8a4c');tapHint();}
   if(mode==='over'){
-    if(flash>0){ctx.fillStyle='#ffffffcc';ctx.fillRect(0,0,W,H);}
+    if(flash>0){ctx.fillStyle='#ffffffcc';ctx.fillRect(VIEW.l,VIEW.t,VIEW.r-VIEW.l,VIEW.b-VIEW.t);}
     if(landedAt){
-      const k=Math.min(1,(ticks-landedAt+a)/8),ease=1-Math.pow(1-k,3); // panel slides up
-      const oy=(1-ease)*60;ctx.globalAlpha=ease;
+      const t=ticks-landedAt+a;
+      const k1=Math.min(1,t/6),e1=1-Math.pow(1-k1,3); // heading fades and drops into place
+      ctx.globalAlpha=e1;ctx.translate(0,(1-e1)*-18);
       if(skin.gameover)ctx.drawImage(skin.gameover,W/2-110,82,220,50);else text('GROUNDED',W/2,120,30,'#ff8a4c');
-      ctx.translate(0,oy);
+      ctx.setTransform(...BASE);ctx.globalAlpha=1;
+      const k2=Math.max(0,Math.min(1,(t-BOARD_DELAY)/BOARD_TICKS)),e2=1-Math.pow(1-k2,3); // board slides up from below the screen
+      ctx.translate(0,(1-e2)*(VIEW.b-140));
       if(skin.panel)ctx.drawImage(skin.panel,34,146,220,120);
       else{ctx.fillStyle='#120d22dd';ctx.fillRect(34,146,220,120);ctx.strokeStyle='#e0a64a';ctx.lineWidth=2;ctx.strokeRect(34,146,220,120);}
       const m=medal(),mi=score>=40?4:score>=30?3:score>=20?2:score>=10?1:0,mImg=mi?skin['medal'+mi]:null;
@@ -627,11 +667,11 @@ function draw(a){
       text('SCORE',214,176,10,'#e0a64a','right');text(String(score),214,200,20,'#fff3dd','right');
       text('BEST',214,222,10,'#e0a64a','right');text(String(best),214,246,20,'#fff3dd','right');
       if(newBest){ctx.fillStyle='#ff8a4c';ctx.fillRect(138,212,32,13);text('NEW',154,223,8,'#fff3dd');}
-      ctx.globalAlpha=1;ctx.setTransform(RES,0,0,RES,0,0);
+      ctx.globalAlpha=1;ctx.setTransform(...BASE);
       if(canRestart())text('Tap to fly again',W/2,300,14,'#fff3dd','center','body');
     }
   }
-  if(paused){ctx.fillStyle='#120d2266';ctx.fillRect(0,0,W,H);}
+  if(paused){ctx.fillStyle='#120d2266';ctx.fillRect(VIEW.l,VIEW.t,VIEW.r-VIEW.l,VIEW.b-VIEW.t);}
 }
 
 /* ---------- Tuning drawer ---------- */
