@@ -22,7 +22,7 @@
 html,body{height:100%}
 body{background:var(--night);color:var(--cream);font-family:var(--body);overflow:hidden;
   user-select:none;-webkit-user-select:none;touch-action:manipulation}
-.stage{position:fixed;inset:0}
+.stage{position:fixed;left:0;right:0;top:0;bottom:0;min-height:100vh;min-height:100lvh}
 #game{position:absolute;inset:0;width:100%;height:100%;display:block;outline:none}
 #game:focus,#game:focus-visible{outline:none}
 #safeProbe{position:fixed;inset:0;visibility:hidden;pointer-events:none;
@@ -140,7 +140,8 @@ const cv=document.getElementById('game'),ctx=cv.getContext('2d');
 // on every device) and the sky, ground, background and pipes are drawn out to every edge.
 const VIEW={l:0,r:W,t:0,b:H};let BASE=[RES,0,0,RES,0,0];
 function fit(){
-  const dpr=Math.min(window.devicePixelRatio||1,3),vw=innerWidth,vh=innerHeight;
+  const box=document.getElementById('stage').getBoundingClientRect();
+  const dpr=Math.min(window.devicePixelRatio||1,3),vw=Math.max(1,box.width||innerWidth),vh=Math.max(1,box.height||innerHeight);
   cv.width=Math.round(vw*dpr);cv.height=Math.round(vh*dpr);
   const ps=getComputedStyle(document.getElementById('safeProbe'));
   const st=parseFloat(ps.paddingTop)||0,sr=parseFloat(ps.paddingRight)||0,sb=parseFloat(ps.paddingBottom)||0,sl=parseFloat(ps.paddingLeft)||0;
@@ -231,7 +232,15 @@ function drawSkinPipe(x,edgeY,dir){ // dir 1: lower pipe grows down from edgeY; 
   ctx.restore();}
 const BG_SPEED=0.5; // background rolls at half the pipe speed, for depth
 const bgSeam={img:null,mirror:false};
-function checkSeam(im){ // if the left and right edges don't match, alternate mirrored copies so the loop has no visible seam
+function setPageColor(im){ // anything showing behind the game (Safari toolbars, overscroll) uses the background's bottom color
+  try{const c=document.createElement('canvas');c.width=32;c.height=4;const g=c.getContext('2d');
+    g.drawImage(im,0,im.height-Math.max(1,im.height*.02),im.width,Math.max(1,im.height*.02),0,0,32,4);
+    const d=g.getImageData(0,0,32,4).data;let r=0,gg=0,b=0;for(let i=0;i<d.length;i+=4){r+=d[i];gg+=d[i+1];b+=d[i+2];}
+    const n=d.length/4,col=`rgb(${r/n|0},${gg/n|0},${b/n|0})`;
+    document.documentElement.style.background=col;document.body.style.background=col;
+    const tc=document.querySelector('meta[name="theme-color"]');if(tc)tc.content=col;}catch(e){}}
+function checkSeam(im){
+  setPageColor(im); // if the left and right edges don't match, alternate mirrored copies so the loop has no visible seam
   bgSeam.img=im;bgSeam.mirror=false;
   try{const w=Math.min(im.width,400),h=Math.min(im.height,400),c=document.createElement('canvas');c.width=w;c.height=h;
     const g=c.getContext('2d');g.drawImage(im,0,0,w,h);const L=g.getImageData(0,0,1,h).data,R=g.getImageData(w-1,0,1,h).data;
@@ -623,6 +632,14 @@ function drawBird(y){
   const bx=mode==='title'?W/2:P.birdX+P.birdW/2;
   ctx.save();ctx.translate(bx,y+P.birdH/2);ctx.rotate(-vis*Math.PI/180);
   if(skin.bird){const wob=mode==='over'?0:wf*.15;ctx.translate(0,wob);drawSkinBird(ctx);}else birdShape(ctx,wf,true);ctx.restore();}
+function bgFloor(sc){ // with a custom background, extend its bottom edge down to the bottom of the screen instead of the built-in ground
+  if(VIEW.b<=H)return;const im=skin.bg;if(bgSeam.img!==im)checkSeam(im);
+  const period=bgSeam.mirror?2*W:W,o=-(((sc*BG_SPEED)%period)+period)%period,slice=Math.max(1,Math.floor(im.height*.02));
+  ctx.imageSmoothingEnabled=false;
+  for(let k=Math.floor((VIEW.l-o)/W);o+k*W<VIEW.r;k++){const x=o+k*W,flip=bgSeam.mirror&&(((k%2)+2)%2===1);
+    ctx.save();if(flip){ctx.translate(x+W,0);ctx.scale(-1,1);}else ctx.translate(x,0);
+    ctx.drawImage(im,0,im.height-slice,im.width,slice,0,H-.5,W+.6,VIEW.b-H+.5);ctx.restore();}
+  ctx.imageSmoothingEnabled=true;}
 function ground(sc){const gw=VIEW.r-VIEW.l;ctx.fillStyle='#2a1d3d';ctx.fillRect(VIEW.l,GROUND,gw,VIEW.b-GROUND);
   ctx.fillStyle='#e0a64a';ctx.fillRect(VIEW.l,GROUND,gw,3);
   ctx.fillStyle='#3a2a52';const o=-(sc%28);for(let x=o+Math.floor((VIEW.l-o)/28)*28;x<VIEW.r;x+=28)ctx.fillRect(x,GROUND+10,16,3);}
@@ -670,7 +687,7 @@ function draw(a){
     if(skin.pipe){drawSkinPipe(x,top,-1);drawSkinPipe(x,bot,1);ctx.globalAlpha=1;continue;}
     pipeBody(x,VIEW.t-4,top-16);collar(x,top-16);if(mode!=='over')steam(x,top);
     pipeBody(x,bot+16,GROUND);collar(x,bot);ctx.globalAlpha=1;}
-  ground(sc);drawBird(by);
+  if(skin.bg)bgFloor(sc);else ground(sc);drawBird(by);
   if(mode==='play')text(String(score),W/2,64,36,'#fff3dd');
   if(mode==='title')titleScreen();
   if(mode==='ready'){text('GET READY',W/2,120,28,'#ff8a4c');tapHint();}
@@ -688,13 +705,15 @@ function draw(a){
       else{ctx.fillStyle='#120d22dd';ctx.fillRect(34,146,220,120);ctx.strokeStyle='#e0a64a';ctx.lineWidth=2;ctx.strokeRect(34,146,220,120);}
       const m=medal(),mi=score>=40?4:score>=30?3:score>=20?2:score>=10?1:0,mImg=mi?skin['medal'+mi]:null;
       if(mImg)ctx.drawImage(mImg,60,176,48,48);
+      else if(skin.panel&&!m){} // a custom board has its own empty medal spot, so no placeholder disc is drawn
       else{ctx.fillStyle=m?m[1]:'#3a2a52';ctx.beginPath();ctx.arc(84,200,24,0,7);ctx.fill();
         ctx.strokeStyle='#120d22';ctx.lineWidth=3;ctx.stroke();
         if(m){ctx.fillStyle='#ffffff99';ctx.beginPath();ctx.arc(76,192,6,0,7);ctx.fill();}}
-      text(m?m[0].toUpperCase():'NO MEDAL',84,246,9,m?m[1]:'#a898c4');
-      text('SCORE',214,176,10,'#e0a64a','right');text(String(score),214,200,20,'#fff3dd','right');
-      text('BEST',214,222,10,'#e0a64a','right');text(String(best),214,246,20,'#fff3dd','right');
-      if(newBest){ctx.fillStyle='#ff8a4c';ctx.fillRect(138,212,32,13);text('NEW',154,223,8,'#fff3dd');}
+      const own=!!skin.panel; // a custom board has its own labels
+      if(!own){text(m?m[0].toUpperCase():'NO MEDAL',84,246,9,m?m[1]:'#a898c4');
+        text('SCORE',214,176,10,'#e0a64a','right');text('BEST',214,222,10,'#e0a64a','right');}
+      text(String(score),214,own?196:200,20,'#fff3dd','right');text(String(best),214,own?242:246,20,'#fff3dd','right');
+      if(newBest&&!own){ctx.fillStyle='#ff8a4c';ctx.fillRect(138,212,32,13);text('NEW',154,223,8,'#fff3dd');}
       ctx.globalAlpha=1;ctx.setTransform(...BASE);
       if(canRestart())text('Tap to fly again',W/2,300,14,'#fff3dd','center','body');
     }
