@@ -211,13 +211,13 @@ const SKINS=[
   {k:'bg',label:'Background',hint:'Smart-cropped to 288 × 512',max:1400,frame:[288,512],res:2},
   {k:'title',label:'Title',hint:'Smart-fit to 220 × 60 on the title screen',max:1200,frame:[220,60],res:4},
   {k:'gameover',label:'Game over heading',hint:'Smart-fit to 220 × 50 after a crash',max:1200,frame:[220,50],res:4},
-  {k:'panel',label:'Score panel',hint:'Fills the 220 × 120 board behind your score',max:1200,frame:[220,120],res:3},
   {k:'medal1',label:'Bronze medal',hint:'48 × 48, at 10 points',max:512,frame:[48,48],res:6},
   {k:'medal2',label:'Silver medal',hint:'48 × 48, at 20 points',max:512,frame:[48,48],res:6},
   {k:'medal3',label:'Gold medal',hint:'48 × 48, at 30 points',max:512,frame:[48,48],res:6},
   {k:'medal4',label:'Platinum medal',hint:'48 × 48, at 40 points',max:512,frame:[48,48],res:6},
+  {k:'fill',label:'Ground fill',hint:'Tiled under the background and on the score board',max:512,raw:true},
 ];
-const skin={bird:null,pipe:null,bg:null,title:null,gameover:null,panel:null,medal1:null,medal2:null,medal3:null,medal4:null};
+const skin={fill:null,bird:null,pipe:null,bg:null,title:null,gameover:null,medal1:null,medal2:null,medal3:null,medal4:null};
 const srcs={bird:null,pipe:null}; // the uploaded image before fitting, so it can be re-adjusted
 function drawSkinBird(c){const im=skin.bird;c.imageSmoothingEnabled=false;c.drawImage(im,-P.birdW/2,-P.birdH/2,P.birdW,P.birdH);c.imageSmoothingEnabled=true;}
 function drawSkinPipe(x,edgeY,dir){ // dir 1: lower pipe grows down from edgeY; -1: upper pipe grows up
@@ -232,7 +232,15 @@ function drawSkinPipe(x,edgeY,dir){ // dir 1: lower pipe grows down from edgeY; 
   ctx.restore();}
 const BG_SPEED=0.5; // background rolls at half the pipe speed, for depth
 const bgSeam={img:null,mirror:false};
+let fillCss=null;
+function applyFillCss(){ // the fill texture also covers anything behind the game (Safari toolbars, overscroll)
+  if(fillCss===skin.fill)return;fillCss=skin.fill;
+  for(const el of[document.documentElement,document.body]){
+    if(skin.fill){el.style.background=`url(${skin.fill.src}) repeat`;el.style.backgroundSize=`${skin.fill.width/2}px ${skin.fill.height/2}px`;}
+    else{el.style.background='';el.style.backgroundSize='';}}
+  if(!skin.fill&&skin.bg)setPageColor(skin.bg);}
 function setPageColor(im){ // anything showing behind the game (Safari toolbars, overscroll) uses the background's bottom color
+  if(skin.fill)return;
   try{const c=document.createElement('canvas');c.width=32;c.height=4;const g=c.getContext('2d');
     g.drawImage(im,0,im.height-Math.max(1,im.height*.02),im.width,Math.max(1,im.height*.02),0,0,32,4);
     const d=g.getImageData(0,0,32,4).data;let r=0,gg=0,b=0;for(let i=0;i<d.length;i+=4){r+=d[i];gg+=d[i+1];b+=d[i+2];}
@@ -287,8 +295,9 @@ function paintSkin(def){const row=document.getElementById('skin-'+def.k),th=row.
   th.innerHTML=skin[def.k]?'':'<span>Default</span>';if(skin[def.k])th.appendChild(Object.assign(new Image(),{src:skin[def.k].src,alt:''}));
   row.querySelector('.clr').hidden=!skin[def.k];
   const adj=row.querySelector('.adj');if(adj)adj.hidden=!(skin[def.k]&&srcs[def.k]);}
+const DEFAULT_FILL='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEwAAAAaCAIAAACSIi2WAAABWGlDQ1BJQ0MgUHJvZmlsZQAAeJx9kLFLw1AQxr9WpaB1EB0cHDKJQ5SSCro4tBVEcQhVweqUvqapkMZHkiIFN/+Bgv+BCs5uFoc6OjgIopPo5uSk4KLleS+JpCJ6j+N+fO+74zggOW5wbvcDqDu+W1zKK5ulLSX1jAS9IAzm8Zyur0r+rj/j/T703k7LWb///43Biukxqp+UGcZdH0ioxPqezyXvE4+5tBRxS7IV8onkcsjngWe9WCC+JlZYzagQvxCr5R7d6uG63WDRDnL7tOlsrMk5lBNYxA48cNgw0IQCHdk//LOBv4BdcjfhUp+FGnzqyZEiJ5jEy3DAMAOVWEOGUpN3ju53F91PjbWDJ2ChI4S4iLWVDnA2Rydrx9rUPDAyBFy1ueEagdRHmaxWgddTYLgEjN5Qz7ZXzWrh9uk8MPAoxNskkDoEui0hPo6E6B5T8wNw6XwBA6diE8HYWhMAAAEISURBVHic7ZVBjsMgDEX9Le5/g95rtnOPht+FW+SAaaIQzUiItyT44Q8kwe/PQ0RIAhBHzllCEI8DqAw2SLKeSv3mF1FVK8x8mkRVt20rSxQnALMFqzgSSZvhc36vCTGPb8IajUIeq3wPXuIfVYF3yfekylgK2qmfZ9rrDEBZiKSYAc7cqW1Vn37e8/MmJASAstmCoLwaSe+m9pG6CfuMG87428MQOV4o3dtKl3NneN4DOb72BY325jbutZ2nuke7DR7vKf6W3nWMV9tQCw2HDLyT3nbN47+cbbvXSKHr2i9kpLwQ/AmH+euL9C+skLOwQs7CCjkLK+QsrJCzsELOwgo5CyvkLLwAWUuwaWYBllIAAAAASUVORK5CYII='; // built-in tan ground texture, used until a fill is uploaded
 async function setSkin(def,url,save){
-  skin[def.k]=url?await loadData(url):null;
+  skin[def.k]=url?await loadData(url):(def.k==='fill'?await loadData(DEFAULT_FILL):null);
   if(save){try{url?localStorage.setItem('cw-skin-'+def.k,url):localStorage.removeItem('cw-skin-'+def.k);}
     catch(e){skinMsg.textContent=def.label+' image is too large to save, so it will reset when you reload.';}}
   if(def.k==='bird')buildMask();paintSkin(def);}
@@ -298,7 +307,7 @@ for(const def of SKINS){
     <div class="skin-btns"><label>Upload<input type="file" accept="image/*" id="file-${def.k}"></label>${def.frame?'<button type="button" class="adj" hidden>Adjust</button>':''}<button type="button" class="clr" hidden>Clear</button></div>`;
   skinsEl.appendChild(row);
   row.querySelector('input').addEventListener('change',async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;skinMsg.textContent='';
-    try{const raw=await loadData(URL.createObjectURL(f));const url=processImage(raw,def.max,def.k!=='bg'&&document.getElementById('keyBg').checked);
+    try{const raw=await loadData(URL.createObjectURL(f));const url=(def.raw?(()=>{const c=document.createElement('canvas');c.width=raw.width;c.height=raw.height;c.getContext('2d').drawImage(raw,0,0);return c.toDataURL('image/png');})():processImage(raw,def.max,def.k!=='bg'&&document.getElementById('keyBg').checked));
       if(!url){skinMsg.textContent='That image came out empty. Try turning off background removal.';return;}
       if(def.frame){const im=await loadData(url);openFitter(def,im,url,null);}
       else await setSkin(def,url,true);}
@@ -451,8 +460,8 @@ addEventListener('keydown',e=>{if(e.key==='Escape'&&F){e.stopImmediatePropagatio
 /* ---------- Built-in graphics from the assets folder ----------
    Put bird.png, pipe.png and/or background.png in an "assets" folder next to this page.
    Each one is smart-cropped to the game's sizes on load. Uploads in Settings still override them. */
-const ASSET_FILES={bird:'assets/bird.png',pipe:'assets/pipe.png',bg:'assets/background.png',title:'assets/title.png',gameover:'assets/gameover.png',panel:'assets/panel.png',
-  medal1:'assets/medal-bronze.png',medal2:'assets/medal-silver.png',medal3:'assets/medal-gold.png',medal4:'assets/medal-platinum.png'};
+const ASSET_FILES={bird:'assets/bird.png',pipe:'assets/pipe.png',bg:'assets/background.png',title:'assets/title.png',gameover:'assets/gameover.png',
+  medal1:'assets/medal-bronze.png',medal2:'assets/medal-silver.png',medal3:'assets/medal-gold.png',medal4:'assets/medal-platinum.png',fill:'assets/fill.png'};
 (async()=>{
   if(location.protocol==='file:')return; // browsers block reading neighbor files when opened straight from disk
   for(const def of SKINS){
@@ -461,6 +470,8 @@ const ASSET_FILES={bird:'assets/bird.png',pipe:'assets/pipe.png',bg:'assets/back
     try{
       const res=await fetch(ASSET_FILES[def.k],{cache:'no-cache'});if(!res.ok)continue;
       const raw=await loadData(URL.createObjectURL(await res.blob()));
+      if(def.raw){const c=document.createElement('canvas');c.width=raw.width;c.height=raw.height;c.getContext('2d').drawImage(raw,0,0);
+        await setSkin(def,c.toDataURL('image/png'),false);continue;}
       const url=processImage(raw,def.max,def.k!=='bg');if(!url)continue;
       const im=await loadData(url);
       const prev=F;F={def,im,src:url,fitS:Math.min(def.frame[0]/im.width,def.frame[1]/im.height),z:1,ox:0,oy:0,stretch:false};
@@ -524,6 +535,7 @@ for(const d of SOUNDS){
     }
   }
 })();
+loadData(DEFAULT_FILL).then(im=>{if(!skin.fill)skin.fill=im;}).catch(()=>{});
 buildMask();
 
 /* ---------- State ---------- */
@@ -632,6 +644,12 @@ function drawBird(y){
   const bx=mode==='title'?W/2:P.birdX+P.birdW/2;
   ctx.save();ctx.translate(bx,y+P.birdH/2);ctx.rotate(-vis*Math.PI/180);
   if(skin.bird){const wob=mode==='over'?0:wf*.15;ctx.translate(0,wob);drawSkinBird(ctx);}else birdShape(ctx,wf,true);ctx.restore();}
+function drawFill(y0,sc){ // tile the fill texture from y0 to the bottom of the screen, scrolling with the pipes
+  if(VIEW.b<=y0)return;const im=skin.fill,tw=im.width/2,th=im.height/2;
+  const o=-((sc%tw)+tw)%tw;
+  ctx.save();ctx.beginPath();ctx.rect(VIEW.l,y0,VIEW.r-VIEW.l,VIEW.b-y0);ctx.clip();
+  for(let y=y0;y<VIEW.b;y+=th)for(let x=o+Math.floor((VIEW.l-o)/tw)*tw;x<VIEW.r;x+=tw)ctx.drawImage(im,x,y,tw+.4,th+.4);
+  ctx.restore();}
 function bgFloor(sc){ // with a custom background, extend its bottom edge down to the bottom of the screen instead of the built-in ground
   if(VIEW.b<=H)return;const im=skin.bg;if(bgSeam.img!==im)checkSeam(im);
   const period=bgSeam.mirror?2*W:W,o=-(((sc*BG_SPEED)%period)+period)%period,slice=Math.max(1,Math.floor(im.height*.02));
@@ -687,7 +705,10 @@ function draw(a){
     if(skin.pipe){drawSkinPipe(x,top,-1);drawSkinPipe(x,bot,1);ctx.globalAlpha=1;continue;}
     pipeBody(x,VIEW.t-4,top-16);collar(x,top-16);if(mode!=='over')steam(x,top);
     pipeBody(x,bot+16,GROUND);collar(x,bot);ctx.globalAlpha=1;}
-  if(skin.bg)bgFloor(sc);else ground(sc);drawBird(by);
+  applyFillCss();
+  if(skin.fill){if(!skin.bg){ground(sc);drawFill(GROUND+3,sc);}else drawFill(H,sc);}
+  else if(skin.bg)bgFloor(sc);else ground(sc);
+  drawBird(by);
   if(mode==='play')text(String(score),W/2,64,36,'#fff3dd');
   if(mode==='title')titleScreen();
   if(mode==='ready'){text('GET READY',W/2,120,28,'#ff8a4c');tapHint();}
@@ -701,19 +722,24 @@ function draw(a){
       ctx.setTransform(...BASE);ctx.globalAlpha=1;
       const k2=Math.max(0,Math.min(1,(t-BOARD_DELAY)/BOARD_TICKS)),e2=1-Math.pow(1-k2,3); // board slides up from below the screen
       ctx.translate(0,(1-e2)*(VIEW.b-140));
-      if(skin.panel)ctx.drawImage(skin.panel,34,146,220,120);
+      const tex=!!skin.fill; // the score board uses the fill texture when there is one
+      if(tex){const im=skin.fill,tw=im.width/2,th=im.height/2;
+        ctx.fillStyle='#3b2a1c';ctx.fillRect(31,143,226,126); // outline
+        ctx.save();ctx.beginPath();ctx.rect(34,146,220,120);ctx.clip();
+        for(let y=146;y<266;y+=th)for(let x=34;x<254;x+=tw)ctx.drawImage(im,x,y,tw+.4,th+.4);
+        ctx.fillStyle='#ffffff55';ctx.fillRect(34,146,220,3);ctx.fillStyle='#00000022';ctx.fillRect(34,263,220,3); // edge light and shade
+        ctx.restore();}
       else{ctx.fillStyle='#120d22dd';ctx.fillRect(34,146,220,120);ctx.strokeStyle='#e0a64a';ctx.lineWidth=2;ctx.strokeRect(34,146,220,120);}
       const m=medal(),mi=score>=40?4:score>=30?3:score>=20?2:score>=10?1:0,mImg=mi?skin['medal'+mi]:null;
       if(mImg)ctx.drawImage(mImg,60,176,48,48);
-      else if(skin.panel&&!m){} // a custom board has its own empty medal spot, so no placeholder disc is drawn
+      else if(tex&&!m){ctx.fillStyle='#00000022';ctx.beginPath();ctx.arc(84,200,22,0,7);ctx.fill();} // empty medal spot
       else{ctx.fillStyle=m?m[1]:'#3a2a52';ctx.beginPath();ctx.arc(84,200,24,0,7);ctx.fill();
         ctx.strokeStyle='#120d22';ctx.lineWidth=3;ctx.stroke();
         if(m){ctx.fillStyle='#ffffff99';ctx.beginPath();ctx.arc(76,192,6,0,7);ctx.fill();}}
-      const own=!!skin.panel; // a custom board has its own labels
-      if(!own){text(m?m[0].toUpperCase():'NO MEDAL',84,246,9,m?m[1]:'#a898c4');
-        text('SCORE',214,176,10,'#e0a64a','right');text('BEST',214,222,10,'#e0a64a','right');}
-      text(String(score),214,own?196:200,20,'#fff3dd','right');text(String(best),214,own?242:246,20,'#fff3dd','right');
-      if(newBest&&!own){ctx.fillStyle='#ff8a4c';ctx.fillRect(138,212,32,13);text('NEW',154,223,8,'#fff3dd');}
+      text(m?m[0].toUpperCase():'NO MEDAL',84,246,9,m?m[1]:(tex?'#d8c89a':'#a898c4'));
+      text('SCORE',214,176,10,tex?'#ff8a4c':'#e0a64a','right');text('BEST',214,222,10,tex?'#ff8a4c':'#e0a64a','right');
+      text(String(score),214,200,20,'#fff3dd','right');text(String(best),214,246,20,'#fff3dd','right');
+      if(newBest){ctx.fillStyle='#ff8a4c';ctx.fillRect(138,212,32,13);text('NEW',154,223,8,'#fff3dd');}
       ctx.globalAlpha=1;ctx.setTransform(...BASE);
       if(canRestart())text('Tap to fly again',W/2,300,14,'#fff3dd','center','body');
     }
