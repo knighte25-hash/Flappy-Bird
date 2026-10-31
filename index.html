@@ -150,6 +150,9 @@ function fit(){
   VIEW.l=-ox/s;VIEW.r=(vw-ox)/s;VIEW.t=-oy/s;VIEW.b=(vh-oy)/s;
   BASE=[dpr*s,0,0,dpr*s,dpr*ox,dpr*oy];}
 addEventListener('resize',fit);addEventListener('orientationchange',()=>setTimeout(fit,200));fit();
+try{new ResizeObserver(()=>fit()).observe(document.getElementById('stage'));}catch(e){}
+if(window.visualViewport)visualViewport.addEventListener('resize',fit);
+addEventListener('pageshow',fit);setTimeout(fit,300);
 
 let best=0;try{best=+localStorage.getItem('cw-best')||0}catch(e){}
 
@@ -210,14 +213,13 @@ const SKINS=[
   {k:'pipe',label:'Pipe',hint:'Smart-cropped to 52 × 320; flipped for the top pipe',max:1024,frame:[52,320],cap:26,res:3},
   {k:'bg',label:'Background',hint:'Smart-cropped to 288 × 512',max:1400,frame:[288,512],res:2},
   {k:'title',label:'Title',hint:'Smart-fit to 220 × 60 on the title screen',max:1200,frame:[220,60],res:4},
-  {k:'gameover',label:'Game over heading',hint:'Smart-fit to 220 × 50 after a crash',max:1200,frame:[220,50],res:4},
   {k:'medal1',label:'Bronze medal',hint:'48 × 48, at 10 points',max:512,frame:[48,48],res:6},
   {k:'medal2',label:'Silver medal',hint:'48 × 48, at 20 points',max:512,frame:[48,48],res:6},
   {k:'medal3',label:'Gold medal',hint:'48 × 48, at 30 points',max:512,frame:[48,48],res:6},
   {k:'medal4',label:'Platinum medal',hint:'48 × 48, at 40 points',max:512,frame:[48,48],res:6},
   {k:'fill',label:'Ground fill',hint:'Tiled under the background and on the score board',max:512,raw:true},
 ];
-const skin={fill:null,bird:null,pipe:null,bg:null,title:null,gameover:null,medal1:null,medal2:null,medal3:null,medal4:null};
+const skin={fill:null,bird:null,pipe:null,bg:null,title:null,medal1:null,medal2:null,medal3:null,medal4:null};
 const srcs={bird:null,pipe:null}; // the uploaded image before fitting, so it can be re-adjusted
 function drawSkinBird(c){const im=skin.bird;c.imageSmoothingEnabled=false;c.drawImage(im,-P.birdW/2,-P.birdH/2,P.birdW,P.birdH);c.imageSmoothingEnabled=true;}
 function drawSkinPipe(x,edgeY,dir){ // dir 1: lower pipe grows down from edgeY; -1: upper pipe grows up
@@ -460,7 +462,7 @@ addEventListener('keydown',e=>{if(e.key==='Escape'&&F){e.stopImmediatePropagatio
 /* ---------- Built-in graphics from the assets folder ----------
    Put bird.png, pipe.png and/or background.png in an "assets" folder next to this page.
    Each one is smart-cropped to the game's sizes on load. Uploads in Settings still override them. */
-const ASSET_FILES={bird:'assets/bird.png',pipe:'assets/pipe.png',bg:'assets/background.png',title:'assets/title.png',gameover:'assets/gameover.png',
+const ASSET_FILES={bird:'assets/bird.png',pipe:'assets/pipe.png',bg:'assets/background.png',title:'assets/title.png',
   medal1:'assets/medal-bronze.png',medal2:'assets/medal-silver.png',medal3:'assets/medal-gold.png',medal4:'assets/medal-platinum.png',fill:'assets/fill.png'};
 (async()=>{
   if(location.protocol==='file:')return; // browsers block reading neighbor files when opened straight from disk
@@ -644,11 +646,18 @@ function drawBird(y){
   const bx=mode==='title'?W/2:P.birdX+P.birdW/2;
   ctx.save();ctx.translate(bx,y+P.birdH/2);ctx.rotate(-vis*Math.PI/180);
   if(skin.bird){const wob=mode==='over'?0:wf*.15;ctx.translate(0,wob);drawSkinBird(ctx);}else birdShape(ctx,wf,true);ctx.restore();}
+let fillColorCache=null,fillColorImg=null;
+function fillColor(){ // average color of the fill texture, used to clear the screen each frame
+  if(fillColorImg===skin.fill)return fillColorCache;fillColorImg=skin.fill;fillColorCache='#e1d693';
+  try{const c=document.createElement('canvas');c.width=8;c.height=8;const g=c.getContext('2d');g.drawImage(skin.fill,0,0,8,8);
+    const d=g.getImageData(0,0,8,8).data;let r=0,gg=0,b=0;for(let i=0;i<d.length;i+=4){r+=d[i];gg+=d[i+1];b+=d[i+2];}
+    fillColorCache=`rgb(${r/64|0},${gg/64|0},${b/64|0})`;}catch(e){}
+  return fillColorCache;}
 function drawFill(y0,sc){ // tile the fill texture from y0 to the bottom of the screen, scrolling with the pipes
-  if(VIEW.b<=y0)return;const im=skin.fill,tw=im.width/2,th=im.height/2;
+  const yb=Math.max(VIEW.b,(cv.height/BASE[3])-BASE[5]/BASE[3])+2;if(yb<=y0)return;const im=skin.fill,tw=im.width/2,th=im.height/2;
   const o=-((sc%tw)+tw)%tw;
-  ctx.save();ctx.beginPath();ctx.rect(VIEW.l,y0,VIEW.r-VIEW.l,VIEW.b-y0);ctx.clip();
-  for(let y=y0;y<VIEW.b;y+=th)for(let x=o+Math.floor((VIEW.l-o)/tw)*tw;x<VIEW.r;x+=tw)ctx.drawImage(im,x,y,tw+.4,th+.4);
+  ctx.save();ctx.beginPath();ctx.rect(VIEW.l-2,y0,VIEW.r-VIEW.l+4,yb-y0);ctx.clip();
+  for(let y=y0;y<yb;y+=th)for(let x=o+Math.floor((VIEW.l-o)/tw)*tw;x<VIEW.r;x+=tw)ctx.drawImage(im,x,y,tw+.4,th+.4);
   ctx.restore();}
 function bgFloor(sc){ // with a custom background, extend its bottom edge down to the bottom of the screen instead of the built-in ground
   if(VIEW.b<=H)return;const im=skin.bg;if(bgSeam.img!==im)checkSeam(im);
@@ -664,6 +673,21 @@ function ground(sc){const gw=VIEW.r-VIEW.l;ctx.fillStyle='#2a1d3d';ctx.fillRect(
 function text(s,x,y,size,col,align='center',face='display'){
   ctx.font=face==='display'?`${size}px Bungee, Impact, sans-serif`:`800 ${size}px Nunito, Trebuchet MS, sans-serif`;
   ctx.textAlign=align;ctx.lineJoin='round';ctx.lineWidth=size/5;ctx.strokeStyle='#120d22';ctx.strokeText(s,x,y);ctx.fillStyle=col;ctx.fillText(s,x,y);}
+const MEDAL_TONES={1:['#f0a868','#c46a2c','#7a3a14'],2:['#eef2f6','#a9b4c2','#5c6676'],3:['#ffe27a','#e0a822','#8a5a08'],4:['#ffffff','#bfe6f0','#5a8fa0']};
+function drawMedal(cx,cy,tier,t){ // built-in medal: rimmed coin with a star, a soft shine and a twinkle
+  const[hi,mid,dk]=MEDAL_TONES[tier],R=22;
+  ctx.save();
+  ctx.fillStyle='#00000033';ctx.beginPath();ctx.arc(cx+1.5,cy+2,R,0,7);ctx.fill();           // drop shadow
+  ctx.fillStyle=dk;ctx.beginPath();ctx.arc(cx,cy,R,0,7);ctx.fill();                          // outer edge
+  const g=ctx.createLinearGradient(cx-R,cy-R,cx+R,cy+R);g.addColorStop(0,hi);g.addColorStop(.55,mid);g.addColorStop(1,dk);
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(cx,cy,R-2.5,0,7);ctx.fill();                        // face
+  ctx.strokeStyle=dk;ctx.globalAlpha=.55;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(cx,cy,R-7,0,7);ctx.stroke();ctx.globalAlpha=1; // inner ring
+  ctx.beginPath();for(let i=0;i<10;i++){const r=i%2?4.6:10.5,a=-Math.PI/2+i*Math.PI/5;ctx.lineTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r);}ctx.closePath();
+  ctx.fillStyle=dk;ctx.fill();ctx.translate(-.8,-.8);ctx.fillStyle=hi;ctx.fill();ctx.translate(.8,.8); // embossed star
+  ctx.fillStyle='#ffffff88';ctx.beginPath();ctx.ellipse(cx-8,cy-9,6,3.2,-.7,0,7);ctx.fill();      // shine
+  const tw=(Math.sin((t||0)/5)+1)/2;ctx.globalAlpha=.4+.6*tw;ctx.fillStyle='#fff';                  // twinkle
+  const sx=cx+12,sy=cy-13,sz=2+2*tw;ctx.fillRect(sx-sz,sy-.6,sz*2,1.2);ctx.fillRect(sx-.6,sy-sz,1.2,sz*2);
+  ctx.restore();}
 function medal(){if(score>=40)return['Platinum','#e6f2ff'];if(score>=30)return['Gold','#ffcf4a'];if(score>=20)return['Silver','#cfd6e0'];if(score>=10)return['Bronze','#d08a4a'];return null;}
 const greyCache=new Map();
 function greyBird(wf){ // a greyed-out copy of whichever bird is in use (built-in or uploaded)
@@ -694,9 +718,17 @@ function titleScreen(){
   ctx.fillStyle='#120d22';ctx.beginPath();ctx.moveTo(W/2-7,by+press+11);ctx.lineTo(W/2+9,by+press+20);ctx.lineTo(W/2-7,by+press+29);ctx.fill();
   if(best)text('BEST '+best,W/2,GROUND+44,13,'#e0a64a');}
 
+function gameOverSign(cx,y){ // chunky retro heading: orange letters with a light inner edge and a dark outline
+  ctx.save();ctx.font='34px Bungee, Impact, sans-serif';ctx.textAlign='center';ctx.lineJoin='miter';ctx.miterLimit=2;
+  ctx.lineWidth=11;ctx.strokeStyle='#3b2412';ctx.strokeText('GAME OVER',cx,y+2);
+  ctx.lineWidth=11;ctx.strokeStyle='#3b2412';ctx.strokeText('GAME OVER',cx,y);
+  ctx.lineWidth=5;ctx.strokeStyle='#fff3dd';ctx.strokeText('GAME OVER',cx,y);
+  const g=ctx.createLinearGradient(0,y-28,0,y);g.addColorStop(0,'#ffb347');g.addColorStop(1,'#f07c1e');
+  ctx.fillStyle=g;ctx.fillText('GAME OVER',cx,y);ctx.restore();}
 function draw(a){
   const live=mode!=='over'&&!paused;
   const sc=live?prevScroll+(scroll-prevScroll)*a:scroll, by=live||bird.y<GROUND-P.birdH?prevY+(bird.y-prevY)*a:bird.y;
+  ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle=skin.fill?fillColor():'#2a1d3d';ctx.fillRect(0,0,cv.width,cv.height);
   ctx.setTransform(...BASE);
   if(skin.bg)drawSkinBg(sc);else{sky();layer(far,sc,.15,'#3a2556','#ffd27a55');layer(near,sc,.35,'#24183a','#ffd27a99');}
   const shift=mode==='play'&&!paused?P.pipeSpeed*(1-a):0; // smooth pipes between ticks
@@ -718,7 +750,7 @@ function draw(a){
       const t=ticks-landedAt+a;
       const k1=Math.min(1,t/6),e1=1-Math.pow(1-k1,3); // heading fades and drops into place
       ctx.globalAlpha=e1;ctx.translate(0,(1-e1)*-18);
-      if(skin.gameover)ctx.drawImage(skin.gameover,W/2-110,82,220,50);else text('GROUNDED',W/2,120,30,'#ff8a4c');
+      gameOverSign(W/2,118);
       ctx.setTransform(...BASE);ctx.globalAlpha=1;
       const k2=Math.max(0,Math.min(1,(t-BOARD_DELAY)/BOARD_TICKS)),e2=1-Math.pow(1-k2,3); // board slides up from below the screen
       ctx.translate(0,(1-e2)*(VIEW.b-140));
@@ -733,9 +765,8 @@ function draw(a){
       const m=medal(),mi=score>=40?4:score>=30?3:score>=20?2:score>=10?1:0,mImg=mi?skin['medal'+mi]:null;
       if(mImg)ctx.drawImage(mImg,60,176,48,48);
       else if(tex&&!m){ctx.fillStyle='#00000022';ctx.beginPath();ctx.arc(84,200,22,0,7);ctx.fill();} // empty medal spot
-      else{ctx.fillStyle=m?m[1]:'#3a2a52';ctx.beginPath();ctx.arc(84,200,24,0,7);ctx.fill();
-        ctx.strokeStyle='#120d22';ctx.lineWidth=3;ctx.stroke();
-        if(m){ctx.fillStyle='#ffffff99';ctx.beginPath();ctx.arc(76,192,6,0,7);ctx.fill();}}
+      else if(m)drawMedal(84,200,mi,t);
+      else{ctx.fillStyle='#3a2a52';ctx.beginPath();ctx.arc(84,200,22,0,7);ctx.fill();}
       text(m?m[0].toUpperCase():'NO MEDAL',84,246,9,m?m[1]:(tex?'#d8c89a':'#a898c4'));
       text('SCORE',214,176,10,tex?'#ff8a4c':'#e0a64a','right');text('BEST',214,222,10,tex?'#ff8a4c':'#e0a64a','right');
       text(String(score),214,200,20,'#fff3dd','right');text(String(best),214,246,20,'#fff3dd','right');
